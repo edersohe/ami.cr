@@ -1,0 +1,13 @@
+name: ami
+version: 0.1.0
+
+authors:
+  - Eder Sosa <eder.sohe@gmail.com>
+
+targets:
+  ami:
+    main: src/ami.cr
+
+crystal: 0.23.0
+
+license: MIT
