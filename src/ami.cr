@@ -92,10 +92,12 @@ class AMI
 
   def send_action(name : String, **params, variables : Hash(String, String) = {} of String => String, handler : AMI::Handler | Nil = nil, id : String = "") : String
     id = id == "" ? SecureRandom.uuid : id
+    name = name.capitalize
     action_id = "ActionID: #{name}-#{id}"
-    message = "#{action_id}\r\naction: #{name}\r\n"
+    message = "#{action_id}\r\nAction: #{name}\r\n"
     params.each do |key, value|
-      message += "#{key}: #{value}\r\n"
+      message += "#{key.to_s.capitalize}: #{value}\r\n"
+    end
     variables.each do |key, value|
       message += "Variable: #{key}=#{value}\r\n"
     end
