@@ -90,12 +90,14 @@ class AMI
       @handlers[pattern] = handler
   end
 
-  def send_action(name : String, **params, handler : AMI::Handler | Nil = nil, id : String | Nil = nil) : String
-    id = id || SecureRandom.uuid
+  def send_action(name : String, **params, variables : Hash(String, String) = {} of String => String, handler : AMI::Handler | Nil = nil, id : String = "") : String
+    id = id == "" ? SecureRandom.uuid : id
     action_id = "ActionID: #{name}-#{id}"
     message = "#{action_id}\r\naction: #{name}\r\n"
     params.each do |key, value|
       message += "#{key}: #{value}\r\n"
+    variables.each do |key, value|
+      message += "Variable: #{key}=#{value}\r\n"
     end
     if handler
       add_pattern_handler(action_id, handler)
