@@ -86,7 +86,7 @@ class AMI
     end
   end
 
-  def add_pattern_handler(pattern, handler) : Nil
+  def add_pattern_handler(pattern : String, handler : AMI::Handler) : Nil
       @handlers[pattern] = handler
   end
 
