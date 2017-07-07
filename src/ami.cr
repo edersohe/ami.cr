@@ -51,6 +51,10 @@ class AMI
     @@logger
   end
 
+  def self.gen_id
+    SecureRandom.hex
+  end
+
   def self.info_handler(event : AMI::Event) : Nil
       AMI.log.info("\r\n#{event}\r\n", "AMI::info_handler")
   end
@@ -90,11 +94,9 @@ class AMI
       @handlers[pattern] = handler
   end
 
-  def send_action(name : String, **params, variables : Hash(String, String) = {} of String => String, handler : AMI::Handler | Nil = nil, id : String = "") : String
-    id = id == "" ? SecureRandom.uuid : id
-    name = name.capitalize
-    action_id = "ActionID: #{name}-#{id}"
-    message = "#{action_id}\r\nAction: #{name}\r\n"
+  def send_action(name : String, **params, variables : Hash(String, String) = {} of String => String, handler : AMI::Handler | Nil = nil, id : String = AMI.gen_id) : String
+    action_id = "ActionID: #{id}"
+    message = "#{action_id}\r\nAction: #{name.capitalize}\r\n"
     params.each do |key, value|
       message += "#{key.to_s.capitalize}: #{value}\r\n"
     end
