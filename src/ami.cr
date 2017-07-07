@@ -94,9 +94,12 @@ class AMI
       @handlers[pattern] = handler
   end
 
-  def send_action(name : String, **params, variables : Hash(String, String) = {} of String => String, handler : AMI::Handler | Nil = nil, id : String = AMI.gen_id) : String
-    action_id = "ActionID: #{id}"
-    message = "#{action_id}\r\nAction: #{name.capitalize}\r\n"
+  def send_action(name : String,
+                  actionid : String = AMI.gen_id,
+                  variables : Hash(String, String) = {} of String => String,
+                  handler : AMI::Handler | Nil = nil,
+                  **params) : String
+    message = "ActionID: #{actionid}\r\nAction: #{name.capitalize}\r\n"
     params.each do |key, value|
       message += "#{key.to_s.capitalize}: #{value}\r\n"
     end
@@ -104,10 +107,10 @@ class AMI
       message += "Variable: #{key}=#{value}\r\n"
     end
     if handler
-      add_pattern_handler(action_id, handler)
+      add_pattern_handler("ActionID: #{actionid}", handler)
     end
     log.debug("\r\n#{message}", "AMI::send_action")
     @client << "#{message}\r\n"
-    id
+    actionid
   end
 end
