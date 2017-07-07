@@ -82,7 +82,7 @@ class AMI
       @handlers.each_key do |key|
         if stream && /#{key}/ === stream
           @handlers[key].call(parse_event(stream))
-          if key.starts_with?("ActionID: ")
+          if key.index("Response: (.*\r\n)*ActionID: (.*\r\n)*")
             @handlers.delete(key)
           end
         end
@@ -107,7 +107,7 @@ class AMI
       message += "Variable: #{key}=#{value}\r\n"
     end
     if handler
-      add_pattern_handler("ActionID: #{actionid}", handler)
+      add_pattern_handler("Response: (.*\r\n)*ActionID: #{actionid}(.*\r\n)*", handler)
     end
     log.debug("\r\n#{message}", "AMI::send_action")
     @client << "#{message}\r\n"
