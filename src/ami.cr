@@ -27,26 +27,58 @@ module AMI
     @@log
   end
 
+  def self.client : TCPSocket
+    @@client
+  end
+
+  def self.handlers : Handlers
+    @@handlers
+  end
+
   def self.gen_id : String
     "#{Time.utc_now.epoch_ms}-#{SecureRandom.hex(5)}"
   end
 
   def self.info_handler(event : Event) : Nil
-    @@log.info(event, "info_handler")
+    log.info(event, "info_handler")
   end
 
   def self.dummy_handler(event : Event) : Nil
   end
 
+  class Action
+    def initialize(@id : String, @message : String)
+    end
+
+    def id
+      @id
+    end
+
+    def message
+      @message
+    end
+
+    def to_s
+      @message
+    end
+
+    def send : Nil
+      AMI.log.debug(message, "send")
+      AMI.client << message << EOL
+    end
+  end
+
   def self.to_h(event : String) : Event
     h = Hash(String, String).new
-    begin
-      event.split(EOL).each do |line|
+    unknown = 0
+    event.split(EOL).each do |line|
+      begin
         key, value = line.split(": ", 2)
-        h[key] = h[value]
+        h[key] = value
+      rescue
+        unknown += 1
+        h = {"UnknownField#{unknown}" => line}
       end
-    rescue
-      h = {"RawEvent" => event}
     end
     h
   end
@@ -64,7 +96,7 @@ module AMI
         end
         break
       rescue ex : Errno
-        log.error(ex, "connect")
+        log.error(ex, "open")
         if !reconnect
           break
         end
@@ -75,22 +107,22 @@ module AMI
   end
 
   def self.close : Nil
-    @@client.close
+    client.close
   end
 
   def self.dispatch_event_handler(event : String)
-    @@handlers.each_key do |key|
+    handlers.each_key do |key|
       if /#{key}/ === event
-        @@handlers[key].call(to_h(event))
+        handlers[key].call(to_h(event))
         if key.index("Response: (.*\r\n)*ActionID: (.*\r\n)*")
-          @@handlers.delete(key)
+          handlers.delete(key)
         end
       end
     end
   end
 
   def self.read_event(delimiter : String = EOE) : Nil
-    event = @@client.gets(delimiter, chomp=true)
+    event = client.gets(delimiter, chomp=true)
     if event
       log.debug(event, "read_event")
       dispatch_event_handler(event)
@@ -98,32 +130,26 @@ module AMI
   end
 
   def self.add_pattern_handler(pattern : String, handler : Handler) : Nil
-      @@handlers[pattern] = handler
-  end
-
-  def self.send(message : String) : Nil
-    log.debug(message, "send_action")
-    @@client << message << EOL
+      handlers[pattern] = handler
   end
 
   def self.action(name : String,
              actionid : String = gen_id,
              variables : Variables = Variables.new,
              handler : Handler | Nil = nil,
-             **params) : String
-    message = "Action: #{name.capitalize + EOL}"
-    message += "ActionID: #{actionid + EOL}"
+             **params) : Action
+    message = "action: #{name.downcase + EOL}"
+    message += "actionid: #{actionid + EOL}"
     params.each do |key, value|
-      message += "#{key.to_s.capitalize}: #{value.to_s + EOL}"
+      message += "#{key.to_s.downcase}: #{value.to_s + EOL}"
     end
     variables.each do |key, value|
-      message += "Variable: #{key}=#{value + EOL}"
+      message += "Variable: #{key.downcase}=#{value + EOL}"
     end
     if handler
       add_pattern_handler("Response: (.*\r\n)*ActionID: #{actionid}(.*\r\n)*", handler)
     end
-    send(message)
-    actionid
+    Action.new(actionid, message)
   end
 
 end
