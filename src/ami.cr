@@ -35,8 +35,7 @@ module AMI
     end
 
     def send : Nil
-      AMI.log.debug(@string, "send")
-      AMI.client << "#{@string + EOL}"
+      AMI.send(@string)
     end
   end
 
@@ -121,6 +120,11 @@ module AMI
       log.debug(event, "receive")
       dispatch_event_handler(event)
     end
+  end
+
+  def self.send(message : String): Nil
+    log.debug(message, "send")
+    client << "#{message + EOL}"
   end
 
   def self.add_pattern_handler(pattern : String, handler : Handler) : Nil
