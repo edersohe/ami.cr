@@ -8,8 +8,39 @@ module AMI
   EOL = "\r\n"
   EOE = "\r\n\r\n"
 
-  alias Event = Hash(String, String)
-  alias Handler = Proc(Event, Nil)
+  class Message
+
+    def initialize(@string : String)
+      @hash = Hash(String, String).new
+    end
+
+    def to_h : Hash(String, String)
+      if @hash.empty?
+        unknown = 0
+        @string.chomp.split(EOL).each do |line|
+          begin
+            key, value = line.split(": ", 2)
+            @hash[key.underscore] = value
+          rescue
+            unknown += 1
+            @hash["unknown#{unknown}"] = line
+          end
+        end
+      end
+      @hash
+    end
+
+    def to_s
+      to_h.to_s
+    end
+
+    def send : Nil
+      AMI.log.debug(@string, "send")
+      AMI.client << "#{@string + EOL}"
+    end
+  end
+
+  alias Handler = Proc(Message, Nil)
   alias Handlers = Hash(String, Handler)
   alias Variables = Hash(String, String)
 
@@ -17,8 +48,8 @@ module AMI
   @@log.level = Logger::Severity.from_value((ENV["LOG_LEVEL"]? || "1").to_i)
   @@log.formatter = Logger::Formatter.new do |severity, datetime, progname, message, io|
     label = severity.unknown? ? "ANY" : severity.to_s
-    io << EOL << label[0] << ", [" << datetime << " #" << Process.pid << "] "
-    io << label.rjust(5) << " -- " << progname << ": " << EOL << message.chomp
+    io << EOL << label[0] << " [" << datetime.to_s("%F %T") << " #" << Process.pid
+    io << "] " << progname.ljust(5) << ": " << EOL << message.chomp
   end
   @@client : TCPSocket = TCPSocket.allocate
   @@handlers = Handlers.new
@@ -39,48 +70,11 @@ module AMI
     "#{Time.utc_now.epoch_ms}-#{SecureRandom.hex(5)}"
   end
 
-  def self.info_handler(event : Event) : Nil
+  def self.info_handler(event : Message) : Nil
     log.info(event, "info_handler")
   end
 
-  def self.dummy_handler(event : Event) : Nil
-  end
-
-  class Action
-    def initialize(@id : String, @message : String)
-    end
-
-    def id
-      @id
-    end
-
-    def message
-      @message
-    end
-
-    def to_s
-      @message
-    end
-
-    def send : Nil
-      AMI.log.debug(message, "send")
-      AMI.client << message << EOL
-    end
-  end
-
-  def self.to_h(event : String) : Event
-    h = Hash(String, String).new
-    unknown = 0
-    event.split(EOL).each do |line|
-      begin
-        key, value = line.split(": ", 2)
-        h[key] = value
-      rescue
-        unknown += 1
-        h = {"UnknownField#{unknown}" => line}
-      end
-    end
-    h
+  def self.dummy_handler(event : Message) : Nil
   end
 
   def self.open(host : String, port : Int32, reconnect : Bool = false) : Class
@@ -88,10 +82,10 @@ module AMI
       begin
         @@client = TCPSocket.new(host, port)
         sleep(1)
-        read_event(EOL)
+        receive(EOL)
         spawn do
           loop do
-            read_event
+            receive
           end
         end
         break
@@ -113,7 +107,7 @@ module AMI
   def self.dispatch_event_handler(event : String)
     handlers.each_key do |key|
       if /#{key}/ === event
-        handlers[key].call(to_h(event))
+        handlers[key].call(Message.new(event))
         if key.index("Response: (.*\r\n)*ActionID: (.*\r\n)*")
           handlers.delete(key)
         end
@@ -121,10 +115,10 @@ module AMI
     end
   end
 
-  def self.read_event(delimiter : String = EOE) : Nil
+  def self.receive(delimiter : String = EOE) : Nil
     event = client.gets(delimiter, chomp=true)
     if event
-      log.debug(event, "read_event")
+      log.debug(event, "receive")
       dispatch_event_handler(event)
     end
   end
@@ -137,19 +131,18 @@ module AMI
              actionid : String = gen_id,
              variables : Variables = Variables.new,
              handler : Handler | Nil = nil,
-             **params) : Action
-    message = "action: #{name.downcase + EOL}"
-    message += "actionid: #{actionid + EOL}"
+             **params) : Message
+    action = "Action: #{name.camelcase + EOL}"
+    action += "ActionID: #{actionid + EOL}"
     params.each do |key, value|
-      message += "#{key.to_s.downcase}: #{value.to_s + EOL}"
+      action += "#{key.to_s.camelcase}: #{value.to_s + EOL}"
     end
     variables.each do |key, value|
-      message += "Variable: #{key.downcase}=#{value + EOL}"
+      action += "Variable: #{key}=#{value + EOL}"
     end
     if handler
       add_pattern_handler("Response: (.*\r\n)*ActionID: #{actionid}(.*\r\n)*", handler)
     end
-    Action.new(actionid, message)
+    Message.new(action)
   end
-
 end
