@@ -28,7 +28,7 @@ module AMI
   end
 
   def self.gen_id : String
-    "#{Time.utc_now.epoch_ms}-#{SecureRandom.hex(10)}"
+    "#{Time.utc_now.epoch_ms}-#{SecureRandom.hex(5)}"
   end
 
   def self.info_handler(event : Event) : Nil
@@ -36,6 +36,19 @@ module AMI
   end
 
   def self.dummy_handler(event : Event) : Nil
+  end
+
+  def self.to_h(event : String) : Event
+    h = Hash(String, String).new
+    begin
+      event.split(EOL).each do |line|
+        key, value = line.split(": ", 2)
+        h[key] = h[value]
+      end
+    rescue
+      h = {"RawEvent" => event}
+    end
+    h
   end
 
   def self.open(host : String, port : Int32, reconnect : Bool = false) : Class
@@ -65,31 +78,22 @@ module AMI
     @@client.close
   end
 
-  def self.to_event(stream : String) : Event
-    event = Event.new
-    begin
-      stream.split(EOL).each do |line|
-        token = line.split(": ", 2)
-        event[token[0]] = token[1]
+  def self.dispatch_event_handler(event : String)
+    @@handlers.each_key do |key|
+      if /#{key}/ === event
+        @@handlers[key].call(to_h(event))
+        if key.index("Response: (.*\r\n)*ActionID: (.*\r\n)*")
+          @@handlers.delete(key)
+        end
       end
-    rescue
-      event = {"RawEvent" => stream}
     end
-    event
   end
 
   def self.read_event(delimiter : String = EOE) : Nil
-    stream = @@client.gets(delimiter, chomp=true)
-    if stream
-      log.debug(stream, "read_event")
-      @@handlers.each_key do |key|
-        if /#{key}/ === stream
-          @@handlers[key].call(to_event(stream))
-          if key.index("Response: (.*\r\n)*ActionID: (.*\r\n)*")
-            @@handlers.delete(key)
-          end
-        end
-      end
+    event = @@client.gets(delimiter, chomp=true)
+    if event
+      log.debug(event, "read_event")
+      dispatch_event_handler(event)
     end
   end
 
