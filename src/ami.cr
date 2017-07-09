@@ -17,8 +17,8 @@ module AMI
   @@log.level = Logger::Severity.from_value((ENV["LOG_LEVEL"]? || "1").to_i)
   @@log.formatter = Logger::Formatter.new do |severity, datetime, progname, message, io|
     label = severity.unknown? ? "ANY" : severity.to_s
-    io << label[0] << ", [" << datetime << " #" << Process.pid << "] "
-    io << label.rjust(5) << " -- " << progname << ": " << EOL << message.chomp << EOL
+    io << EOL << label[0] << ", [" << datetime << " #" << Process.pid << "] "
+    io << label.rjust(5) << " -- " << progname << ": " << EOL << message.chomp
   end
   @@client : TCPSocket = TCPSocket.allocate
   @@handlers = Handlers.new
@@ -123,4 +123,3 @@ module AMI
   end
 
 end
-
