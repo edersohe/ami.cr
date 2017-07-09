@@ -2,7 +2,11 @@ require "socket"
 require "secure_random"
 require "logger"
 
+
 module AMI
+
+  EOL = "\r\n"
+  EOE = "\r\n\r\n"
 
   alias Event = Hash(String, String)
   alias Handler = Proc(Event, Nil)
@@ -11,6 +15,11 @@ module AMI
 
   @@log = Logger.new(STDOUT)
   @@log.level = Logger::Severity.from_value((ENV["LOG_LEVEL"]? || "1").to_i)
+  @@log.formatter = Logger::Formatter.new do |severity, datetime, progname, message, io|
+    label = severity.unknown? ? "ANY" : severity.to_s
+    io << label[0] << ", [" << datetime << " #" << Process.pid << "] "
+    io << label.rjust(5) << " -- " << progname << ": " << EOL << message.chomp << EOL
+  end
   @@client : TCPSocket = TCPSocket.allocate
   @@handlers = Handlers.new
 
@@ -23,7 +32,7 @@ module AMI
   end
 
   def self.info_handler(event : Event) : Nil
-    @@log.info("\r\n#{event}\r\n", "info_handler")
+    @@log.info(event, "info_handler")
   end
 
   def self.dummy_handler(event : Event) : Nil
@@ -34,7 +43,7 @@ module AMI
       begin
         @@client = TCPSocket.new(host, port)
         sleep(1)
-        read_event("\r\n")
+        read_event(EOL)
         spawn do
           loop do
             read_event
@@ -59,7 +68,7 @@ module AMI
   def self.to_event(stream : String) : Event
     event = Event.new
     begin
-      stream.split("\r\n").each do |line|
+      stream.split(EOL).each do |line|
         token = line.split(": ", 2)
         event[token[0]] = token[1]
       end
@@ -69,10 +78,10 @@ module AMI
     event
   end
 
-  def self.read_event(delimiter : String = "\r\n\r\n") : Nil
+  def self.read_event(delimiter : String = EOE) : Nil
     stream = @@client.gets(delimiter, chomp=true)
     if stream
-      log.debug("\r\n#{stream}\r\n", "read_event")
+      log.debug(stream, "read_event")
       @@handlers.each_key do |key|
         if /#{key}/ === stream
           @@handlers[key].call(to_event(stream))
@@ -89,8 +98,8 @@ module AMI
   end
 
   def self.send(message : String) : Nil
-    log.debug("\r\n#{message}", "send_action")
-    @@client << "#{message}\r\n"
+    log.debug(message, "send_action")
+    @@client << message << EOL
   end
 
   def self.action(name : String,
@@ -98,12 +107,13 @@ module AMI
              variables : Variables = Variables.new,
              handler : Handler | Nil = nil,
              **params) : String
-    message = "ActionID: #{actionid}\r\nAction: #{name.capitalize}\r\n"
+    message = "Action: #{name.capitalize + EOL}"
+    message += "ActionID: #{actionid + EOL}"
     params.each do |key, value|
-      message += "#{key.to_s.capitalize}: #{value}\r\n"
+      message += "#{key.to_s.capitalize}: #{value.to_s + EOL}"
     end
     variables.each do |key, value|
-      message += "Variable: #{key}=#{value}\r\n"
+      message += "Variable: #{key}=#{value + EOL}"
     end
     if handler
       add_pattern_handler("Response: (.*\r\n)*ActionID: #{actionid}(.*\r\n)*", handler)
