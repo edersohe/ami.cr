@@ -2,16 +2,19 @@ require "socket"
 require "secure_random"
 require "logger"
 
-class AMI
+module AMI
 
   alias Event = Hash(String, String)
   alias Handler = Proc(Event, Nil)
+  alias Handlers = Hash(String, Handler)
+  alias Variables = Hash(String, String)
 
   @@log = Logger.new(STDOUT)
   @@log.level = Logger::Severity.from_value((ENV["LOG_LEVEL"]? || "1").to_i)
-  @handlers = {} of String => Handler
+  @@client : TCPSocket = TCPSocket.allocate
+  @@handlers = Handlers.new
 
-  def log : Logger
+  def self.log : Logger
     @@log
   end
 
@@ -26,34 +29,34 @@ class AMI
   def self.dummy_handler(event : Event) : Nil
   end
 
-  def initialize(host : String, port : Int32, logger : Logger = @@log)
-    @client = TCPSocket.allocate
-    @handlers = {} of String => Handler
-    @@log = logger
-
-    begin
-      @client = TCPSocket.new(host, port)
-    rescue ex : Errno
-      log.fatal(ex, "connect")
-      exit(1)
-    end
-
-    sleep(1)
-    read_event("\r\n")
-
-    spawn do
-      loop do
-        read_event
+  def self.open(host : String, port : Int32, reconnect : Bool = false) : Class
+    loop do
+      begin
+        @@client = TCPSocket.new(host, port)
+        sleep(1)
+        read_event("\r\n")
+        spawn do
+          loop do
+            read_event
+          end
+        end
+        break
+      rescue ex : Errno
+        log.error(ex, "connect")
+        if !reconnect
+          break
+        end
+        sleep(10)
       end
     end
+    AMI
   end
 
-  def close : Nil
-    @client.close
-    exit(0)
+  def self.close : Nil
+    @@client.close
   end
 
-  def parse_event(stream : String) : Event
+  def self.to_event(stream : String) : Event
     event = Event.new
     begin
       stream.split("\r\n").each do |line|
@@ -66,30 +69,35 @@ class AMI
     event
   end
 
-  def read_event(delimiter : String = "\r\n\r\n") : Nil
-    stream = @client.gets(delimiter, chomp=true)
+  def self.read_event(delimiter : String = "\r\n\r\n") : Nil
+    stream = @@client.gets(delimiter, chomp=true)
     if stream
       log.debug("\r\n#{stream}\r\n", "read_event")
-      @handlers.each_key do |key|
+      @@handlers.each_key do |key|
         if /#{key}/ === stream
-          @handlers[key].call(parse_event(stream))
+          @@handlers[key].call(to_event(stream))
           if key.index("Response: (.*\r\n)*ActionID: (.*\r\n)*")
-            @handlers.delete(key)
+            @@handlers.delete(key)
           end
         end
       end
     end
   end
 
-  def add_pattern_handler(pattern : String, handler : Handler) : Nil
-      @handlers[pattern] = handler
+  def self.add_pattern_handler(pattern : String, handler : Handler) : Nil
+      @@handlers[pattern] = handler
   end
 
-  def send_action(name : String,
-                  actionid : String = AMI.gen_id,
-                  variables : Hash(String, String) = {} of String => String,
-                  handler : Handler | Nil = nil,
-                  **params) : String
+  def self.send(message : String) : Nil
+    log.debug("\r\n#{message}", "send_action")
+    @@client << "#{message}\r\n"
+  end
+
+  def self.action(name : String,
+             actionid : String = gen_id,
+             variables : Variables = Variables.new,
+             handler : Handler | Nil = nil,
+             **params) : String
     message = "ActionID: #{actionid}\r\nAction: #{name.capitalize}\r\n"
     params.each do |key, value|
       message += "#{key.to_s.capitalize}: #{value}\r\n"
@@ -100,8 +108,9 @@ class AMI
     if handler
       add_pattern_handler("Response: (.*\r\n)*ActionID: #{actionid}(.*\r\n)*", handler)
     end
-    log.debug("\r\n#{message}", "send_action")
-    @client << "#{message}\r\n"
+    send(message)
     actionid
   end
+
 end
+
