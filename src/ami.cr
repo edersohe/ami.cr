@@ -38,8 +38,14 @@ module AMI
       to_h.to_json
     end
 
+    def log(severity : Logger::Severity, progname : String = "")
+      AMI.log.log(severity, self, progname)
+      self
+    end
+
     def send : Nil
       AMI.send(@string)
+      self
     end
   end
 
@@ -77,7 +83,7 @@ module AMI
     log.debug(event, "debug_handler")
   end
 
-  def self.open(host : String, port : Int32, reconnect : Bool = true) : Class
+  def self.open(host : String, port : Int32, reconnect : Bool = true) : AMI.class
     loop do
       begin
         @@client = TCPSocket.new(host, port)
@@ -118,18 +124,17 @@ module AMI
   def self.receive(delimiter : String = EOE) : Nil
     event = client.gets(delimiter, chomp=true)
     if event
-      log.debug(event, "receive")
       dispatch_handler(event)
     end
   end
 
   def self.send(message : String): Nil
-    log.debug(message, "send")
     client << "#{message + EOL}"
   end
 
-  def self.add_handler(pattern : String, handler : Handler, permanent : Bool = false) : Nil
+  def self.add_handler(pattern : String, handler : Handler, permanent : Bool = false) : AMI.class
       handlers << {pattern, handler, permanent}
+      AMI
   end
 
   def self.action(name : String,
