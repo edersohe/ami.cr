@@ -50,7 +50,7 @@ module AMI
   end
 
   alias Handler = Proc(Message, Nil)
-  alias Handlers = Array(Tuple(String, Handler, Bool))
+  alias Handlers = Array(Tuple(String, Handler, Bool, Tuple(Logger::Severity, String)))
   alias Variables = Hash(String, String)
 
   @@log = Logger.new(STDOUT)
@@ -79,8 +79,7 @@ module AMI
     "#{Time.utc_now.epoch_ms}-#{SecureRandom.hex(5)}"
   end
 
-  def self.debug_handler(event : Message) : Nil
-    log.debug(event, "debug_handler")
+  def self.dummy_handler(event : Message) : Nil
   end
 
   def self.open(host : String, port : Int32, reconnect : Bool = true) : AMI.class
@@ -113,7 +112,11 @@ module AMI
   def self.dispatch_handler(event : String)
     handlers.each do |handler|
       if /#{handler[0]}/ === event
-        handler[1].call(Message.new(event))
+        message = Message.new(event)
+        if handler[3][0] < Logger::UNKNOWN
+          log.log(handler[3][0], message, handler[3][1] + " " + handler[0].inspect)
+        end
+        handler[1].call(message)
         if !handler[2]
           handlers.delete(handler)
         end
@@ -132,15 +135,18 @@ module AMI
     client << "#{message + EOL}"
   end
 
-  def self.add_handler(pattern : String, handler : Handler, permanent : Bool = false) : AMI.class
-      handlers << {pattern, handler, permanent}
+  def self.add_handler(pattern : String,
+                       handler : Handler,
+                       permanent : Bool = false,
+                       log : Tuple(Logger::Severity, String) = {Logger::UNKNOWN, ""}) : AMI.class
+      handlers << {pattern, handler, permanent, log}
       AMI
   end
 
   def self.action(name : String,
-             action_id : String = gen_id,
-             variables : Variables = Variables.new,
-             **params) : Message
+                  action_id : String = gen_id,
+                  variables : Variables = Variables.new,
+                  **params) : Message
     action = "Action: #{name.camelcase + EOL}"
     action += "ActionID: #{action_id + EOL}"
     params.each do |key, value|
