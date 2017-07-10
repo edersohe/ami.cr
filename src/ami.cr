@@ -31,7 +31,11 @@ module AMI
     end
 
     def to_s
-      to_h.to_s
+      @string
+    end
+
+    def to_json
+      to_h.to_json
     end
 
     def send : Nil
