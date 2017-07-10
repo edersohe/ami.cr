@@ -18,39 +18,41 @@ dependencies:
 ### Connect With asterisk manager ingterface
 
 ```crystal
-ami = AMI.new("127.0.0.1", 5038)
+ami = AMI.open("127.0.0.1", 5038)
 ```
 
 ### Create Handler
 
 ```
-def print_event_handler(event : AMI::Event)
-    p event
+def print_event_handler(event : AMI::Message)
+    p event.to_s         # AMI message format
+    p event.to_h         # To hash
+    p event.to_json      # To json
 end
 ```
 
 ### Send action
 
 ```crystal
-ami.send_action("login", username: "MyUsername", secret: "MyPassword", events: "all")
-ami.send_action("originate", channel: "PJSIP/6001", context: "from-internal", exten: 100, priority: 1)
+ami.action("login", username: "MyUsername", secret: "MyPassword", events: "all").send
+ami.action("originate", channel: "PJSIP/6001", context: "from-internal", exten: 100, priority: 1).send
 ```
 
 ### Send action and handle response - in this case print response
 
 ```crystal
-ami.send_action("login", username: "MyUsername", secret: "MyPassword", events: "all", handler: ->print_event_handler(AMI::Event))
+ami.action("login", username: "MyUsername", secret: "MyPassword", events: "all", handler: ->print_event_handler(AMI::Message)).send
 
-ami.send_action("originate", channel: "PJSIP/6001", context: "from-internal", exten: 100, priority: 1, handler: ->print_event_handler(AMI::Event))
+ami.action("originate", channel: "PJSIP/6001", context: "from-internal", exten: 100, priority: 1, handler: ->print_event_handler(AMI::Message)).send
 ```
 
 ### Handle incoming events
 
 ```crystal
-ami.add_pattern_handler("Event: ContactStatus\r\n", ->print_event_handler(AMI::Event))
-ami.add_pattern_handler("Event: Hangup\r\n", ->print_event_handler(AMI::Event))
-ami.add_pattern_handler("Event: DialEnd\r\n", ->print_event_handler(AMI::Event))
-ami.add_pattern_handler("Event: DeviceStateChange(.*\r\n)*State: NOT_INUSE", ->print_event_handler(AMI::Event))
+ami.add_pattern_handler("Event: ContactStatus\r\n", ->print_event_handler(AMI::Message))
+ami.add_pattern_handler("Event: Hangup\r\n", ->print_event_handler(AMI::Message))
+ami.add_pattern_handler("Event: DialEnd\r\n", ->print_event_handler(AMI::Message))
+ami.add_pattern_handler("Event: DeviceStateChange(.*\r\n)*State: NOT_INUSE", ->print_event_handler(AMI::Message))
 ```
 
 ## Contributing
