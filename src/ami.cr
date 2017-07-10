@@ -44,7 +44,7 @@ module AMI
   end
 
   alias Handler = Proc(Message, Nil)
-  alias Handlers = Hash(String, Handler)
+  alias Handlers = Array(Tuple(String, Handler, Bool))
   alias Variables = Hash(String, String)
 
   @@log = Logger.new(STDOUT)
@@ -73,14 +73,11 @@ module AMI
     "#{Time.utc_now.epoch_ms}-#{SecureRandom.hex(5)}"
   end
 
-  def self.info_handler(event : Message) : Nil
-    log.info(event, "info_handler")
+  def self.debug_handler(event : Message) : Nil
+    log.debug(event, "debug_handler")
   end
 
-  def self.dummy_handler(event : Message) : Nil
-  end
-
-  def self.open(host : String, port : Int32, reconnect : Bool = false) : Class
+  def self.open(host : String, port : Int32, reconnect : Bool = true) : Class
     loop do
       begin
         @@client = TCPSocket.new(host, port)
@@ -107,12 +104,12 @@ module AMI
     client.close
   end
 
-  def self.dispatch_event_handler(event : String)
-    handlers.each_key do |key|
-      if /#{key}/ === event
-        handlers[key].call(Message.new(event))
-        if key.index("Response: (.*\r\n)*ActionID: (.*\r\n)*")
-          handlers.delete(key)
+  def self.dispatch_handler(event : String)
+    handlers.each do |handler|
+      if /#{handler[0]}/ === event
+        handler[1].call(Message.new(event))
+        if !handler[2]
+          handlers.delete(handler)
         end
       end
     end
@@ -122,7 +119,7 @@ module AMI
     event = client.gets(delimiter, chomp=true)
     if event
       log.debug(event, "receive")
-      dispatch_event_handler(event)
+      dispatch_handler(event)
     end
   end
 
@@ -131,25 +128,21 @@ module AMI
     client << "#{message + EOL}"
   end
 
-  def self.add_pattern_handler(pattern : String, handler : Handler) : Nil
-      handlers[pattern] = handler
+  def self.add_handler(pattern : String, handler : Handler, permanent : Bool = false) : Nil
+      handlers << {pattern, handler, permanent}
   end
 
   def self.action(name : String,
-             actionid : String = gen_id,
+             action_id : String = gen_id,
              variables : Variables = Variables.new,
-             handler : Handler | Nil = nil,
              **params) : Message
     action = "Action: #{name.camelcase + EOL}"
-    action += "ActionID: #{actionid + EOL}"
+    action += "ActionID: #{action_id + EOL}"
     params.each do |key, value|
       action += "#{key.to_s.camelcase}: #{value.to_s + EOL}"
     end
     variables.each do |key, value|
       action += "Variable: #{key}=#{value + EOL}"
-    end
-    if handler
-      add_pattern_handler("Response: (.*\r\n)*ActionID: #{actionid}(.*\r\n)*", handler)
     end
     Message.new(action)
   end
