@@ -56,7 +56,12 @@ ami.add_handler("Event: DeviceStateChange(.*\r\n)*State: NOT_INUSE", ->print_eve
 ### [Tip] Debug handler for all events
 
 ```crystal
-ami.add_handler("(.*\r\n)*", ->AMI.debug_handler(AMI::Message), true)
+AMI.add_handler(
+    "(.*\r\n)*Event: OriginateResponse(.*\r\n)*",
+    ->AMI.dummy_handler(AMI::Message),
+    true,
+    {Logger::DEBUG, "Kemal.run"}
+)
 ```
 
 ## Contributing
