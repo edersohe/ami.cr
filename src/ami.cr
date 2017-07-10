@@ -52,7 +52,7 @@ module AMI
   @@log.formatter = Logger::Formatter.new do |severity, datetime, progname, message, io|
     label = severity.unknown? ? "ANY" : severity.to_s
     io << EOL << label[0] << " [" << datetime.to_s("%F %T") << " #" << Process.pid
-    io << "] " << progname.ljust(5) << ": " << EOL << message.chomp
+    io << "] " << progname << ": " << EOL << message.chomp
   end
   @@client : TCPSocket = TCPSocket.allocate
   @@handlers = Handlers.new
