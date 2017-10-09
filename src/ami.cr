@@ -50,8 +50,8 @@ module AMI
   end
 
   alias Event = Channel(Message)
-  alias Handler = Proc(Message, Nil)
-  alias Handlers = Array(Tuple(String, Handler | Event, Bool, Tuple(Logger::Severity, String)))
+  alias Callback = Proc(Message, Nil)
+  alias Handlers = Array(Tuple(String, Callback | Event, Bool, Tuple(Logger::Severity, String)))
   alias Variables = Hash(String, String)
 
   @@log = Logger.new(STDOUT)
@@ -110,8 +110,8 @@ module AMI
     client.close
   end
 
-  def self.fire_handler(handler : Handler, message : Message, ) : Nil
-    handler.call(message)
+  def self.fire_handler(callback : Callback, message : Message, ) : Nil
+    callback.call(message)
   end
 
   def self.fire_handler(event : Event, message : Message) : Nil
@@ -148,7 +148,7 @@ module AMI
   end
 
   def self.add_handler(pattern : String,
-                       handler : Handler | Event,
+                       handler : Callback | Event,
                        permanent : Bool = false,
                        log : Tuple(Logger::Severity, String) = {Logger::UNKNOWN, ""}) : AMI.class
       handlers << {pattern, handler, permanent, log}
