@@ -9,6 +9,9 @@ module AMI
   EOL = "\r\n"
   EOE = "\r\n\r\n"
 
+  class Error < Exception
+  end
+
   class Message
 
     def initialize(@string : String)
@@ -84,31 +87,65 @@ module AMI
   def self.dummy_handler(event : Message) : Nil
   end
 
-  def self.open(host : String, port : Int32, reconnect : Bool = true) : AMI.class
-    loop do
-      begin
-        @@client = TCPSocket.new(host, port)
-        sleep(1)
-        receive(EOL)
-        spawn do
-          loop do
-            receive
-          end
-        end
-        break
-      rescue ex : Errno
-        log.error(ex, "open")
-        if !reconnect
-          break
-        end
-        sleep(10)
+  def self.open(host : String, port : Int32, username : String, secret : String, events : String = "all", debug : Bool = false) : AMI.class
+    @@client = TCPSocket.new(host, port)
+    sleep(1)
+    receive(EOL)
+    spawn do
+      loop do
+        receive
       end
+    end
+    login(username, secret, events, debug)
+    if debug
+      add_debug_handler
     end
     AMI
   end
 
+  def self.login(username : String, secret : String, events : String, debug : Bool) : Nil
+    action_id = gen_id
+    channel = Event.new
+
+    add_handler(
+      "Response: (.*\r\n)*ActionID: #{action_id}(.*\r\n)*",
+      channel,
+      log: {Logger::INFO, "login"}
+    )
+
+    message = action(
+      "login",
+      action_id: action_id,
+      username: username,
+      secret: secret,
+      events: events
+    )
+
+    if debug
+      message.log(Logger::DEBUG, "debug send")
+    end
+
+    message.send
+
+    if channel.receive.to_h["response"] != "Success"
+      raise Error.new("Login error : Bad Credentials")
+    end
+  end
+
+  def self.add_debug_handler : Nil
+    add_handler(
+      "(.*\r\n)*",
+      permanent: true,
+      log: {Logger::DEBUG, "debug"}
+    )
+  end
+
   def self.close : Nil
     client.close
+  end
+
+  def self.run : Nil
+    sleep
   end
 
   def self.fire_handler(callback : Callback, message : Message) : Nil
@@ -125,7 +162,7 @@ module AMI
         message = Message.new(event)
 
         if handler[3][0] < Logger::UNKNOWN
-          log.log(handler[3][0], message, handler[3][1] + " " + handler[0].inspect)
+          log.log(handler[3][0], message, handler[3][1] + " match " + handler[0].inspect)
         end
 
         fire_handler(handler[1], message)
@@ -149,7 +186,7 @@ module AMI
   end
 
   def self.add_handler(pattern : String,
-                       handler : Callback | Event,
+                       handler : Callback | Event = ->dummy_handler(Message),
                        permanent : Bool = false,
                        log : Tuple(Logger::Severity, String) = {Logger::UNKNOWN, ""}) : AMI.class
       handlers << {pattern, handler, permanent, log}
