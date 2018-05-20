@@ -1,7 +1,8 @@
 require "socket"
-require "secure_random"
+require "random"
 require "logger"
 
+RANDOM = Random.new
 
 module AMI
 
@@ -77,7 +78,7 @@ module AMI
   end
 
   def self.gen_id : String
-    "#{Time.utc_now.epoch_ms}-#{SecureRandom.hex(5)}"
+    "#{Time.utc_now.epoch_ms}-#{RANDOM.hex(5)}"
   end
 
   def self.dummy_handler(event : Message) : Nil
@@ -110,7 +111,7 @@ module AMI
     client.close
   end
 
-  def self.fire_handler(callback : Callback, message : Message, ) : Nil
+  def self.fire_handler(callback : Callback, message : Message) : Nil
     callback.call(message)
   end
 
