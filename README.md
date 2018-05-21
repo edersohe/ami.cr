@@ -17,8 +17,8 @@ dependencies:
 
 ### Connect With asterisk manager ingterface
 
-```crystal
-ami = AMI.open("127.0.0.1", 5038)
+```crystal
+ami = AMI.open("127.0.0.1", 5038, username: "MyUsername", secret: "MyPassword", events: "all", debug: true)
 ```
 
 ### Create Handler
@@ -49,19 +49,8 @@ ami.add_handler("Event: Hangup\r\n", ->print_event_handler(AMI::Message))
 ### Pattern match is used all connection life after added it to handlers
 
 ```crystal
-ami.add_handler("Event: DialEnd\r\n", ->print_event_handler(AMI::Message), true)
-ami.add_handler("Event: DeviceStateChange(.*\r\n)*State: NOT_INUSE", ->print_event_handler(AMI::Message), true)
-```
-
-### [Tip] Debug handler for all events
-
-```crystal
-AMI.add_handler(
-    "(.*\r\n)*Event: OriginateResponse(.*\r\n)*",
-    ->AMI.dummy_handler(AMI::Message),
-    true,
-    {Logger::DEBUG, "Kemal.run"}
-)
+ami.add_handler("Event: DialEnd\r\n", ->print_event_handler(AMI::Message), permanent: true)
+ami.add_handler("Event: DeviceStateChange(.*\r\n)*State: NOT_INUSE", ->print_event_handler(AMI::Message), permanent: true)
 ```
 
 ## Contributing
